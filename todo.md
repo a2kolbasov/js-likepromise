@@ -1,6 +1,6 @@
 # TODO
 
-* [ ] finally fix
+* [x] finally fix
 * [ ] throws then no catch
-* [ ] prev value | error
+* [x] prev value | error
 * [ ] ❔ resolve(Promise.reject())

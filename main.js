@@ -12,33 +12,6 @@ class LikePromise {
     #error = null
 
     /**
-     * @type {?LikePromise}
-     */
-    #prevPromise = null
-
-    /**
-     * @param {?LikePromise} prevPromise
-     */
-    #setPrevPromise(prevPromise) {
-        if (!this.#prevPromise) this.#prevPromise = prevPromise
-        else this.#prevPromise.#setPrevPromise(prevPromise)
-    }
-
-    #getPrevValue() {
-        if (!this.#prevPromise) return null
-        return this.#prevPromise.#status === "resolved" ?
-            this.#prevPromise.#value :
-            this.#prevPromise.#getPrevValue()
-    }
-
-    #getPrevError() {
-        if (!this.#prevPromise) return null
-        return this.#prevPromise.#status === "rejected" ?
-            this.#prevPromise.#error :
-            this.#prevPromise.#getPrevError()
-    }
-
-    /**
      * @typedef {{resolve: Callback, reject: Callback, lambda?: (value) => any}} Next
      */
 
@@ -65,6 +38,23 @@ class LikePromise {
      * @param {(resolve: Callback, reject: Callback) => void} executor
      */
     constructor(executor) {
+        let callSubscribers = () => {
+            this.#onResolve.forEach(next => {
+                this.#then(next)
+            })
+            // this.#onResolve = []
+
+            this.#onReject.forEach(next => {
+                this.#catch(next)
+            })
+            // this.#onReject = []
+
+            this.#onFinally.forEach(next => {
+                this.#finally(next)
+            })
+            // this.#onFinally = []
+        }
+
         let resolve = (value) => {
             if (this.#status !== "pending") return
 
@@ -74,21 +64,7 @@ class LikePromise {
             else {
                 this.#value = value
                 this.#status = "resolved"
-
-                this.#onResolve.forEach(next => {
-                    this.#then(next)
-                })
-                // this.#onResolve = []
-
-                this.#onReject.forEach(next => {
-                    this.#catch(next)
-                })
-                // this.#onReject = []
-
-                this.#onFinally.forEach(next => {
-                    this.#finally(next)
-                })
-                // this.#onFinally = []
+                callSubscribers()
             }
         }
 
@@ -101,21 +77,7 @@ class LikePromise {
             else {
                 this.#error = error
                 this.#status = "rejected"
-
-                this.#onResolve.forEach(next => {
-                    this.#then(next)
-                })
-                // this.#onResolve = []
-
-                this.#onReject.forEach(next => {
-                    this.#catch(next)
-                })
-                // this.#onReject = []
-
-                this.#onFinally.forEach(next => {
-                    this.#finally(next)
-                })
-                // this.#onFinally = []
+                callSubscribers()
             }
         }
 
@@ -130,25 +92,15 @@ class LikePromise {
         return new LikePromise((resolve, reject) => reject(error))
     }
 
-    #emptyPromise() {
-        let promise = LikePromise.resolve()
-        promise.#value = this.#value
-        promise.#error = this.#error
-        return promise
-    }
-
     /**
      * @param {?Callback=} onResolve
      * @param {?Callback=} onReject
      * @returns {LikePromise}
      */
     then(onResolve, onReject) {
-        let nextPromise = (typeof onResolve !== "function") ?
-            this.#emptyPromise() :
-            new LikePromise((resolve, reject) => {
-                this.#then({ resolve, reject, lambda: onResolve })
-            })
-        nextPromise.#setPrevPromise(this)
+        let nextPromise = new LikePromise((resolve, reject) => {
+            this.#then({ resolve, reject, lambda: onResolve })
+        })
         return (typeof onReject === "function") ? nextPromise.catch(onReject) : nextPromise
     }
 
@@ -163,7 +115,8 @@ class LikePromise {
             }
             case "resolved": {
                 try {
-                    resolve(lambda(this.#value))
+                    if (typeof lambda !== "function") resolve(this.#value)
+                    else resolve(lambda(this.#value))
                 } catch (e) {
                     reject(e)
                 }
@@ -183,12 +136,9 @@ class LikePromise {
      * @returns {LikePromise}
      */
     catch(onReject) {
-        let nextPromise = (typeof onReject !== "function") ?
-            this.#emptyPromise() :
-            new LikePromise((resolve, reject) => {
-                this.#catch({ resolve, reject, lambda: onReject })
-            })
-        nextPromise.#setPrevPromise(this)
+        let nextPromise = new LikePromise((resolve, reject) => {
+            this.#catch({ resolve, reject, lambda: onReject })
+        })
         return nextPromise
     }
 
@@ -202,12 +152,13 @@ class LikePromise {
                 break
             }
             case "resolved": {
-                resolve(this.#getPrevValue())
+                resolve(this.#value)
                 break
             }
             case "rejected": {
                 try {
-                    resolve(lambda(this.#error))
+                    if (typeof lambda !== "function") resolve(this.#error)
+                    else resolve(lambda(this.#error))
                 } catch (e) {
                     reject(e)
                 }
@@ -223,12 +174,9 @@ class LikePromise {
      * @returns {LikePromise}
      */
     finally(onFinally) {
-        let nextPromise = (typeof onFinally !== "function") ?
-            this.#emptyPromise() :
-            new LikePromise((resolve, reject) => {
-                this.#finally({ resolve, reject, lambda: onFinally })
-            })
-        nextPromise.#setPrevPromise(this)
+        let nextPromise = new LikePromise((resolve, reject) => {
+            this.#finally({ resolve, reject, lambda: onFinally })
+        })
         return nextPromise
     }
 
@@ -236,28 +184,19 @@ class LikePromise {
      * @param {Next} next
      */
     #finally({ resolve, reject, lambda }) {
-        switch (this.#status) {
-            case "pending": {
-                this.#onFinally.push({ resolve, reject, lambda })
-                break
-            }
-            case "resolved":
-            case "rejected": {
-                try {
-                    lambda()
-                    if (this.#prevPromise.#status === "resolved") resolve(this.#prevPromise.#value)
-                    else reject(this.#prevPromise.#error)
-                } catch (e) {
-                    reject(e)
-                }
-                break
-            }
-            case "rejected": {
-                reject(this.#error)
-                break
-            }
-            default:
-                throw TypeError("Unknown status")
+        if (this.#status === "pending") {
+            this.#onFinally.push({ resolve, reject, lambda })
+            return
         }
+
+        try {
+            if (typeof lambda === "function") lambda()
+        } catch (e) {
+            reject(e)
+            return
+        }
+        if (this.#status === "resolved") resolve(this.#value)
+        else if (this.#status === "rejected") reject(this.#error)
+        else throw TypeError("Unknown status")
     }
 }
