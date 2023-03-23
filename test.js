@@ -9,5 +9,5 @@ p2 = p1
 p3 = p2
     .finally(() => { console.log('finally') })
 p4 = p3
-    .then(result => { console.log(`result: ${result + 1}`) })
+    .then(result => { console.log('result:', result) })
     ;

@@ -10,6 +10,7 @@ class LikePromise {
 
     #value = null
     #error = null
+    #errorUncaught = false
 
     /**
      * @typedef {{resolve: Callback, reject: Callback, lambda?: (value) => any}} Next
@@ -39,20 +40,31 @@ class LikePromise {
      */
     constructor(executor) {
         let callSubscribers = () => {
-            this.#onResolve.forEach(next => {
-                this.#then(next)
-            })
-            // this.#onResolve = []
+            this.#errorUncaught =
+                this.#status === "rejected" &&
+                this.#onResolve.length === 0 &&
+                this.#onReject.length === 0 &&
+                this.#onFinally.length === 0
 
-            this.#onReject.forEach(next => {
-                this.#catch(next)
-            })
-            // this.#onReject = []
-
-            this.#onFinally.forEach(next => {
-                this.#finally(next)
-            })
-            // this.#onFinally = []
+            if (this.#errorUncaught) {
+                setTimeout(() => {
+                    if (this.#errorUncaught) throw this.#error instanceof Error ? this.#error : new Error(this.#error)
+                })
+            }
+            else {
+                this.#onResolve.forEach(next => {
+                    this.#then(next)
+                })
+                this.#onReject.forEach(next => {
+                    this.#catch(next)
+                })
+                this.#onFinally.forEach(next => {
+                    this.#finally(next)
+                })
+                this.#onResolve = []
+                this.#onReject = []
+                this.#onFinally = []
+            }
         }
 
         let resolve = (value) => {
@@ -98,6 +110,7 @@ class LikePromise {
      * @returns {LikePromise}
      */
     then(onResolve, onReject) {
+        this.#errorUncaught = false
         let nextPromise = new LikePromise((resolve, reject) => {
             this.#then({ resolve, reject, lambda: onResolve })
         })
@@ -136,6 +149,7 @@ class LikePromise {
      * @returns {LikePromise}
      */
     catch(onReject) {
+        this.#errorUncaught = false
         let nextPromise = new LikePromise((resolve, reject) => {
             this.#catch({ resolve, reject, lambda: onReject })
         })
@@ -174,6 +188,7 @@ class LikePromise {
      * @returns {LikePromise}
      */
     finally(onFinally) {
+        this.#errorUncaught = false
         let nextPromise = new LikePromise((resolve, reject) => {
             this.#finally({ resolve, reject, lambda: onFinally })
         })
