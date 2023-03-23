@@ -171,7 +171,7 @@ class LikePromise {
             }
             case "rejected": {
                 try {
-                    if (typeof lambda !== "function") resolve(this.#error)
+                    if (typeof lambda !== "function") reject(this.#error)
                     else resolve(lambda(this.#error))
                 } catch (e) {
                     reject(e)
